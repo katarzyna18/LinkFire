@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Linkfire.MusicLibrary.Api.Contracts;
 using Linkfire.MusicLibrary.Application.Catalog;
 using Microsoft.AspNetCore.Mvc;
@@ -22,13 +23,13 @@ public sealed class AlbumsController : ControllerBase
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<IReadOnlyList<AlbumSearchResultResponse>>> Search(
-        [FromQuery] string? album,
-        [FromQuery] string? artist,
+        [FromQuery, StringLength(200)] string? album,
+        [FromQuery, StringLength(200)] string? artist,
         CancellationToken cancellationToken)
     {
         if (!AlbumSearchQuery.TryCreate(album, artist, out var query))
         {
-            ModelState.AddModelError(string.Empty, "Provide at least one of 'album' or 'artist'.");
+            ModelState.AddModelError("query", "Provide at least one of 'album' or 'artist'.");
             return ValidationProblem(ModelState);
         }
 

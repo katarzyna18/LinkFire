@@ -26,7 +26,12 @@ public static class InfrastructureServiceCollectionExtensions
 
     public static IServiceCollection AddDeezerCatalogProvider(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<DeezerOptions>(configuration.GetSection(DeezerOptions.SectionName));
+        services.AddOptions<DeezerOptions>()
+            .Bind(configuration.GetSection(DeezerOptions.SectionName))
+            .Validate(
+                o => Uri.TryCreate(o.BaseUrl, UriKind.Absolute, out _) && o.TimeoutSeconds > 0 && o.MaxResults is > 0 and <= 100,
+                "Deezer options require an absolute BaseUrl, TimeoutSeconds > 0 and MaxResults between 1 and 100.")
+            .ValidateOnStart();
 
         services.AddHttpClient<IMusicCatalogProvider, DeezerMusicCatalogProvider>((sp, client) =>
         {

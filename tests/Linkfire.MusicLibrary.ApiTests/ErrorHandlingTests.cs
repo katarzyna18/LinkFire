@@ -92,6 +92,18 @@ public class ErrorHandlingTests : ApiTestBase
     }
 
     [Test]
+    public async Task Search_with_an_overlong_term_returns_400_without_calling_the_provider()
+    {
+        var response = await Client.GetAsync($"/api/albums/search?artist={new string('a', 201)}");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+            Assert.That(Factory.Catalog.LastQuery, Is.Null);
+        });
+    }
+
+    [Test]
     public async Task Search_returns_503_problem_details_when_the_catalogue_is_unavailable()
     {
         Factory.Catalog.Unavailable = true;

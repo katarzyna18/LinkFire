@@ -100,7 +100,7 @@ Note: Docker was not available on the machine used to write this solution, so th
 dotnet test
 ```
 
-This runs both projects (45 tests). Tests are deterministic and need no network: the Deezer adapter is tested against a stubbed `HttpMessageHandler`, and the API tests replace the provider with an in-process fake. Both use in-memory SQLite, so nothing is written to disk.
+This runs both projects (46 tests). Tests are deterministic and need no network: the Deezer adapter is tested against a stubbed `HttpMessageHandler`, and the API tests replace the provider with an in-process fake. Both use in-memory SQLite, so nothing is written to disk.
 
 To run a single project:
 
@@ -167,7 +167,7 @@ Error responses use RFC 9457 ProblemDetails:
 
 | Situation | Status |
 | --- | --- |
-| Blank user name, empty `albums` list, missing `provider`/`providerAlbumId`, malformed JSON, search without `album` and `artist` | 400 |
+| Blank user name, empty `albums` list, missing `provider`/`providerAlbumId`, malformed JSON, search without `album` and `artist`, search term longer than 200 characters | 400 |
 | Unknown user, unknown saved album, non-GUID id, unknown route | 404 |
 | Two requests changed the same library at the same time (unique index hit); safe to retry | 409 |
 | Deezer unreachable, timed out, non-2xx, malformed body or Deezer error payload | 503 |
@@ -256,10 +256,10 @@ Unit tests (`Linkfire.MusicLibrary.UnitTests`, 30 tests):
 - **Infrastructure** (`DeezerMusicCatalogProviderTests`): the adapter with a stubbed `HttpMessageHandler`. Covers mapping (including cover fallback and id-to-string), the outgoing URL and limit, empty results, skipping unusable entries, non-2xx, network errors, timeout, malformed JSON, Deezer's error payload, and that caller cancellation is not reported as a provider failure.
 - `AlbumSearchQueryTests`: the "at least one criterion" rule and trimming.
 
-API tests (`Linkfire.MusicLibrary.ApiTests`, 15 tests) boot the real application with `WebApplicationFactory<Program>`, swapping in an in-memory SQLite connection and a `FakeMusicCatalogProvider`:
+API tests (`Linkfire.MusicLibrary.ApiTests`, 16 tests) boot the real application with `WebApplicationFactory<Program>`, swapping in an in-memory SQLite connection and a `FakeMusicCatalogProvider`:
 
 - `LibraryFlowTests`: create user (201 + Location) -> search -> add two albums -> read library -> re-add (skipped) -> delete (204) -> read again -> delete again (404); libraries are isolated between users.
-- `ErrorHandlingTests`: 404 ProblemDetails for unknown user/album, non-GUID ids and unknown routes; 400 for blank name, empty album list, missing provider identifiers, malformed JSON and empty search; 503 when the provider is unavailable, asserting that the provider's internal message does not leak.
+- `ErrorHandlingTests`: 404 ProblemDetails for unknown user/album, non-GUID ids and unknown routes; 400 for blank name, empty album list, missing provider identifiers, malformed JSON, empty search and over-long search terms; 503 when the provider is unavailable, asserting that the provider's internal message does not leak.
 
 Live Deezer is not needed for any automated test: the provider is a boundary, so its behaviour is simulated on both sides of it (fake provider above, stubbed HTTP below). The real integration was exercised manually (search for "Daft Punk" / "Discovery" returns the expected album with cover and URL).
 

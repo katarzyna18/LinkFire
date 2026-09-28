@@ -54,8 +54,17 @@ public sealed class ApiExceptionHandler : IExceptionHandler
             return false;
         }
 
-        // Provider failures are already logged with detail by the adapter; here we only record the outcome.
-        _logger.LogInformation("Request failed with {StatusCode}: {ExceptionType}", problem.Status, exception.GetType().Name);
+        if (exception is ConflictException)
+        {
+            // Keep the underlying database error visible: a conflict should be rare, and if it is not,
+            // the inner exception tells us whether it really was a race.
+            _logger.LogWarning(exception, "Request rejected as a conflicting update");
+        }
+        else
+        {
+            // Provider failures are already logged with detail by the adapter; here we only record the outcome.
+            _logger.LogInformation("Request failed with {StatusCode}: {ExceptionType}", problem.Status, exception.GetType().Name);
+        }
 
         httpContext.Response.StatusCode = problem.Status!.Value;
 
