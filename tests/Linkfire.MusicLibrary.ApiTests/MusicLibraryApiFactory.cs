@@ -22,6 +22,8 @@ public sealed class MusicLibraryApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        // The in-memory database is empty on every start, so let the app create the schema itself.
+        builder.UseSetting("Database:MigrateOnStartup", "true");
 
         builder.ConfigureServices(services =>
         {
@@ -30,6 +32,7 @@ public sealed class MusicLibraryApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<DbContextOptions<MusicLibraryDbContext>>();
             services.AddDbContext<MusicLibraryDbContext>(options => options.UseSqlite(_connection));
 
+            // Replaces the composite (and therefore Deezer) with a scripted catalogue.
             services.RemoveAll<IMusicCatalogProvider>();
             services.AddSingleton<IMusicCatalogProvider>(Catalog);
         });

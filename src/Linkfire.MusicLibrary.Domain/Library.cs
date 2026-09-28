@@ -12,6 +12,10 @@ public class Library
 
     public Guid UserId { get; private set; }
 
+    /// <summary>
+    /// The albums currently loaded for this library. Callers load only what an operation needs
+    /// (for example the albums that could collide with an add), so this is not necessarily the whole library.
+    /// </summary>
     public IReadOnlyCollection<SavedAlbum> Albums => _albums;
 
     internal static Library CreateFor(Guid userId) => new()

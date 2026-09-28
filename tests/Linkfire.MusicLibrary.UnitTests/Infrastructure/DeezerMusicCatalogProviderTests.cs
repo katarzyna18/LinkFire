@@ -39,10 +39,11 @@ public class DeezerMusicCatalogProviderTests
     {
         var provider = CreateProvider(StubHttpMessageHandler.RespondingWith(HttpStatusCode.OK, TwoAlbumsPayload));
 
-        var results = await provider.SearchAlbumsAsync(Query("Discovery", "Daft Punk"), CancellationToken.None);
+        var result = await provider.SearchAlbumsAsync(Query("Discovery", "Daft Punk"), CancellationToken.None);
 
-        Assert.That(results, Has.Count.EqualTo(2));
-        var first = results[0];
+        Assert.That(result.SucceededProviders, Is.EqualTo(new[] { "deezer" }));
+        Assert.That(result.Albums, Has.Count.EqualTo(2));
+        var first = result.Albums[0];
         Assert.Multiple(() =>
         {
             Assert.That(first.Provider, Is.EqualTo("deezer"));
@@ -51,7 +52,7 @@ public class DeezerMusicCatalogProviderTests
             Assert.That(first.AlbumName, Is.EqualTo("Discovery"));
             Assert.That(first.CoverUrl, Is.EqualTo("https://cdn.example/302127/250x250.jpg"), "prefers the medium cover");
             Assert.That(first.AlbumUrl, Is.EqualTo("https://www.deezer.com/album/302127"));
-            Assert.That(results[1].CoverUrl, Is.EqualTo("https://cdn.example/302128/cover.jpg"), "falls back to the default cover");
+            Assert.That(result.Albums[1].CoverUrl, Is.EqualTo("https://cdn.example/302128/cover.jpg"), "falls back to the default cover");
         });
     }
 
@@ -73,13 +74,17 @@ public class DeezerMusicCatalogProviderTests
     }
 
     [Test]
-    public async Task Returns_an_empty_list_when_deezer_has_no_matches()
+    public async Task Returns_a_successful_empty_result_when_deezer_has_no_matches()
     {
         var provider = CreateProvider(StubHttpMessageHandler.RespondingWith(HttpStatusCode.OK, """{ "data": [], "total": 0 }"""));
 
-        var results = await provider.SearchAlbumsAsync(Query("zzzz-no-such-album", null), CancellationToken.None);
+        var result = await provider.SearchAlbumsAsync(Query("zzzz-no-such-album", null), CancellationToken.None);
 
-        Assert.That(results, Is.Empty);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Albums, Is.Empty);
+            Assert.That(result.IsUnavailable, Is.False);
+        });
     }
 
     [Test]
@@ -96,40 +101,40 @@ public class DeezerMusicCatalogProviderTests
             """;
         var provider = CreateProvider(StubHttpMessageHandler.RespondingWith(HttpStatusCode.OK, payload));
 
-        var results = await provider.SearchAlbumsAsync(Query("Valid", null), CancellationToken.None);
+        var result = await provider.SearchAlbumsAsync(Query("Valid", null), CancellationToken.None);
 
-        Assert.That(results.Select(r => r.ProviderAlbumId), Is.EqualTo(new[] { "7" }));
-        Assert.That(results[0].ArtistName, Is.EqualTo("Unknown artist"));
+        Assert.That(result.Albums.Select(r => r.ProviderAlbumId), Is.EqualTo(new[] { "7" }));
+        Assert.That(result.Albums[0].ArtistName, Is.EqualTo("Unknown artist"));
     }
 
     [Test]
-    public void Reports_the_catalogue_as_unavailable_on_a_non_success_status()
+    public async Task Reports_the_provider_as_failed_on_a_non_success_status()
     {
         var provider = CreateProvider(StubHttpMessageHandler.RespondingWith(HttpStatusCode.InternalServerError, "boom"));
 
-        Assert.That(
-            () => provider.SearchAlbumsAsync(Query("Discovery", null), CancellationToken.None),
-            Throws.TypeOf<MusicCatalogUnavailableException>().With.Property("ProviderName").EqualTo("deezer"));
+        var result = await provider.SearchAlbumsAsync(Query("Discovery", null), CancellationToken.None);
+
+        AssertFailed(result);
     }
 
     [Test]
-    public void Reports_the_catalogue_as_unavailable_on_a_network_failure()
+    public async Task Reports_the_provider_as_failed_on_a_network_failure()
     {
         var provider = CreateProvider(StubHttpMessageHandler.Throwing(new HttpRequestException("connection refused")));
 
-        Assert.That(
-            () => provider.SearchAlbumsAsync(Query("Discovery", null), CancellationToken.None),
-            Throws.TypeOf<MusicCatalogUnavailableException>().With.InnerException.TypeOf<HttpRequestException>());
+        var result = await provider.SearchAlbumsAsync(Query("Discovery", null), CancellationToken.None);
+
+        AssertFailed(result);
     }
 
     [Test]
-    public void Reports_the_catalogue_as_unavailable_when_deezer_times_out()
+    public async Task Reports_the_provider_as_failed_when_deezer_times_out()
     {
         var provider = CreateProvider(StubHttpMessageHandler.NeverResponding(), timeout: TimeSpan.FromMilliseconds(100));
 
-        Assert.That(
-            () => provider.SearchAlbumsAsync(Query("Discovery", null), CancellationToken.None),
-            Throws.TypeOf<MusicCatalogUnavailableException>());
+        var result = await provider.SearchAlbumsAsync(Query("Discovery", null), CancellationToken.None);
+
+        AssertFailed(result);
     }
 
     [Test]
@@ -144,25 +149,35 @@ public class DeezerMusicCatalogProviderTests
     }
 
     [Test]
-    public void Reports_the_catalogue_as_unavailable_on_a_malformed_response()
+    public async Task Reports_the_provider_as_failed_on_a_malformed_response()
     {
         var provider = CreateProvider(StubHttpMessageHandler.RespondingWith(HttpStatusCode.OK, "<html>not json</html>"));
 
-        Assert.That(
-            () => provider.SearchAlbumsAsync(Query("Discovery", null), CancellationToken.None),
-            Throws.TypeOf<MusicCatalogUnavailableException>());
+        var result = await provider.SearchAlbumsAsync(Query("Discovery", null), CancellationToken.None);
+
+        AssertFailed(result);
     }
 
     [Test]
-    public void Reports_the_catalogue_as_unavailable_when_deezer_returns_an_error_payload()
+    public async Task Reports_the_provider_as_failed_when_deezer_returns_an_error_payload()
     {
         // Deezer signals quota problems with HTTP 200 and an "error" object.
         const string payload = """{ "error": { "type": "Exception", "message": "Quota limit exceeded", "code": 4 } }""";
         var provider = CreateProvider(StubHttpMessageHandler.RespondingWith(HttpStatusCode.OK, payload));
 
-        Assert.That(
-            () => provider.SearchAlbumsAsync(Query("Discovery", null), CancellationToken.None),
-            Throws.TypeOf<MusicCatalogUnavailableException>());
+        var result = await provider.SearchAlbumsAsync(Query("Discovery", null), CancellationToken.None);
+
+        AssertFailed(result);
+    }
+
+    private static void AssertFailed(CatalogSearchResult result)
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsUnavailable, Is.True);
+            Assert.That(result.FailedProviders, Is.EqualTo(new[] { "deezer" }));
+            Assert.That(result.Albums, Is.Empty);
+        });
     }
 
     private static AlbumSearchQuery Query(string? album, string? artist)
@@ -180,7 +195,7 @@ public class DeezerMusicCatalogProviderTests
         var httpClient = new HttpClient(handler)
         {
             BaseAddress = new Uri(options.BaseUrl),
-            Timeout = timeout ?? TimeSpan.FromSeconds(options.TimeoutSeconds),
+            Timeout = timeout ?? TimeSpan.FromSeconds(options.AttemptTimeoutSeconds),
         };
 
         return new DeezerMusicCatalogProvider(

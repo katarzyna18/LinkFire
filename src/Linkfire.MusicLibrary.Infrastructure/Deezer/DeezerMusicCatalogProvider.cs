@@ -5,6 +5,7 @@ using Linkfire.MusicLibrary.Application.Catalog;
 using Linkfire.MusicLibrary.Domain;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Polly;
 
 namespace Linkfire.MusicLibrary.Infrastructure.Deezer;
 
@@ -28,9 +29,7 @@ public sealed class DeezerMusicCatalogProvider : IMusicCatalogProvider
 
     public string ProviderName => Name;
 
-    public async Task<IReadOnlyList<CatalogAlbum>> SearchAlbumsAsync(
-        AlbumSearchQuery query,
-        CancellationToken cancellationToken)
+    public async Task<CatalogSearchResult> SearchAlbumsAsync(AlbumSearchQuery query, CancellationToken cancellationToken)
     {
         var requestUri = BuildSearchUri(query);
 
@@ -42,7 +41,7 @@ public sealed class DeezerMusicCatalogProvider : IMusicCatalogProvider
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Deezer search returned HTTP {StatusCode}", (int)response.StatusCode);
-                throw Unavailable($"Deezer responded with HTTP {(int)response.StatusCode}.");
+                return Failed();
             }
 
             payload = await response.Content.ReadFromJsonAsync<DeezerSearchResponse>(cancellationToken);
@@ -50,23 +49,30 @@ public sealed class DeezerMusicCatalogProvider : IMusicCatalogProvider
         catch (HttpRequestException ex)
         {
             _logger.LogWarning(ex, "Deezer search failed with a network error");
-            throw Unavailable("Deezer could not be reached.", ex);
+            return Failed();
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             // HttpClient signals its own timeout as a cancellation; a caller-initiated cancel is left alone.
-            _logger.LogWarning(ex, "Deezer search timed out after {TimeoutSeconds}s", _options.TimeoutSeconds);
-            throw Unavailable("Deezer did not respond in time.", ex);
+            _logger.LogWarning(ex, "Deezer search timed out");
+            return Failed();
+        }
+        catch (ExecutionRejectedException ex)
+        {
+            // Raised by the resilience pipeline: total timeout exceeded or circuit open.
+            _logger.LogWarning(ex, "Deezer search rejected by the resilience pipeline");
+            return Failed();
         }
         catch (JsonException ex)
         {
             _logger.LogWarning(ex, "Deezer search returned a malformed response");
-            throw Unavailable("Deezer returned an unreadable response.", ex);
+            return Failed();
         }
 
         if (payload is null)
         {
-            throw Unavailable("Deezer returned an empty response.");
+            _logger.LogWarning("Deezer search returned an empty body");
+            return Failed();
         }
 
         if (payload.Error is not null)
@@ -77,13 +83,15 @@ public sealed class DeezerMusicCatalogProvider : IMusicCatalogProvider
                 payload.Error.Code,
                 payload.Error.Type,
                 payload.Error.Message);
-            throw Unavailable("Deezer rejected the search request.");
+            return Failed();
         }
 
-        return (payload.Data ?? [])
+        var albums = (payload.Data ?? [])
             .Select(MapAlbum)
             .OfType<CatalogAlbum>()
             .ToList();
+
+        return CatalogSearchResult.Success(Name, albums);
     }
 
     private string BuildSearchUri(AlbumSearchQuery query)
@@ -118,6 +126,5 @@ public sealed class DeezerMusicCatalogProvider : IMusicCatalogProvider
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
-    private static MusicCatalogUnavailableException Unavailable(string message, Exception? inner = null) =>
-        new(Name, message, inner);
+    private static CatalogSearchResult Failed() => CatalogSearchResult.Failed(Name);
 }

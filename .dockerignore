@@ -5,6 +5,8 @@
 **/*.db
 **/*.db-shm
 **/*.db-wal
+efbundle
+efbundle.exe
 .git/
 .gitignore
 tests/

@@ -486,3 +486,7 @@ $RECYCLE.BIN/
 *.db-shm
 *.db-wal
 
+# EF Core migration bundles produced locally (the image builds its own)
+efbundle
+efbundle.exe
+

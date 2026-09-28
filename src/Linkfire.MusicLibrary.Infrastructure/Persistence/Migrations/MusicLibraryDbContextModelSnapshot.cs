@@ -38,7 +38,7 @@ namespace Linkfire.MusicLibrary.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("AddedAt")
+                    b.Property<DateTime>("AddedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("AlbumName")

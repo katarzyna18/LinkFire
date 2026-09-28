@@ -58,7 +58,7 @@ public sealed record SavedAlbumResponse(
     string AlbumName,
     string? CoverUrl,
     string AlbumUrl,
-    DateTimeOffset AddedAt)
+    DateTime AddedAt)
 {
     public static SavedAlbumResponse From(SavedAlbum album) => new(
         album.Id,
@@ -71,15 +71,23 @@ public sealed record SavedAlbumResponse(
         album.AddedAt);
 }
 
-public sealed record LibraryResponse(Guid Id, Guid UserId, IReadOnlyList<SavedAlbumResponse> Albums)
+public sealed record LibraryResponse(
+    Guid Id,
+    Guid UserId,
+    IReadOnlyList<SavedAlbumResponse> Albums,
+    int Page,
+    int PageSize,
+    int TotalCount)
 {
-    public static LibraryResponse From(Library library) => new(
-        library.Id,
-        library.UserId,
-        library.Albums
-            .OrderBy(a => a.AddedAt)
-            .Select(SavedAlbumResponse.From)
-            .ToList());
+    public int TotalPages => TotalCount == 0 ? 0 : (int)Math.Ceiling(TotalCount / (double)PageSize);
+
+    public static LibraryResponse From(LibraryPage page) => new(
+        page.LibraryId,
+        page.UserId,
+        page.Albums.Select(SavedAlbumResponse.From).ToList(),
+        page.Page,
+        page.PageSize,
+        page.TotalCount);
 }
 
 /// <summary>

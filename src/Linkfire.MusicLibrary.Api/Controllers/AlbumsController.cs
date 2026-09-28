@@ -7,22 +7,21 @@ namespace Linkfire.MusicLibrary.Api.Controllers;
 
 [ApiController]
 [Route("api/albums")]
-[Produces("application/json")]
 public sealed class AlbumsController : ControllerBase
 {
-    private readonly IMusicCatalogProvider _catalogProvider;
+    private readonly IMusicCatalogProvider _catalog;
 
-    public AlbumsController(IMusicCatalogProvider catalogProvider)
+    public AlbumsController(IMusicCatalogProvider catalog)
     {
-        _catalogProvider = catalogProvider;
+        _catalog = catalog;
     }
 
-    /// <summary>Searches the external music catalogue by album and/or artist name.</summary>
+    /// <summary>Searches the configured music catalogues by album and/or artist name.</summary>
     [HttpGet("search")]
-    [ProducesResponseType<IReadOnlyList<AlbumSearchResultResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<AlbumSearchResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status503ServiceUnavailable)]
-    public async Task<ActionResult<IReadOnlyList<AlbumSearchResultResponse>>> Search(
+    public async Task<ActionResult<AlbumSearchResponse>> Search(
         [FromQuery, StringLength(200)] string? album,
         [FromQuery, StringLength(200)] string? artist,
         CancellationToken cancellationToken)
@@ -33,8 +32,10 @@ public sealed class AlbumsController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
-        var results = await _catalogProvider.SearchAlbumsAsync(query, cancellationToken);
+        var result = await _catalog.SearchAlbumsAsync(query, cancellationToken);
 
-        return Ok(results.Select(AlbumSearchResultResponse.From).ToList());
+        return result.IsUnavailable
+            ? this.CatalogueUnavailable(result.FailedProviders)
+            : AlbumSearchResponse.From(result);
     }
 }

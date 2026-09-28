@@ -1,17 +1,36 @@
 services:
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrate
+    image: linkfire-music-library-migrate:local
+    container_name: linkfire-music-library-migrate
+    command: ["--connection", "Data Source=/data/musiclibrary.db"]
+    volumes:
+      - musiclibrary-data:/data
+    restart: "no"
+
   api:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime
     image: linkfire-music-library:local
     container_name: linkfire-music-library
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__MusicLibrary: "Data Source=/app/data/musiclibrary.db"
+      Database__MigrateOnStartup: "false"
       Deezer__BaseUrl: "https://api.deezer.com/"
-      Deezer__TimeoutSeconds: "5"
+      Deezer__AttemptTimeoutSeconds: "5"
+      Deezer__TotalTimeoutSeconds: "15"
+      Deezer__MaxRetries: "2"
     volumes:
       - musiclibrary-data:/app/data
     restart: unless-stopped

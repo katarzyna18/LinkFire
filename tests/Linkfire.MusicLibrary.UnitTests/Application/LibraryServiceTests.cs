@@ -2,6 +2,8 @@ using Linkfire.MusicLibrary.Application;
 using Linkfire.MusicLibrary.Application.Libraries;
 using Linkfire.MusicLibrary.Application.Users;
 using Linkfire.MusicLibrary.Domain;
+using Linkfire.MusicLibrary.Infrastructure.Persistence;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Linkfire.MusicLibrary.UnitTests.Application;
 
@@ -35,10 +37,11 @@ public class LibraryServiceTests
         await using var verify = _fixture.CreateContext();
         var reloaded = await new UserService(verify).GetAsync(userId, CancellationToken.None);
 
+        Assert.That(reloaded.IsSuccess, Is.True);
         Assert.Multiple(() =>
         {
-            Assert.That(reloaded.Name, Is.EqualTo("Kasia"));
-            Assert.That(reloaded.Library.UserId, Is.EqualTo(userId));
+            Assert.That(reloaded.Value.Name, Is.EqualTo("Kasia"));
+            Assert.That(reloaded.Value.Library.UserId, Is.EqualTo(userId));
         });
     }
 
@@ -47,20 +50,21 @@ public class LibraryServiceTests
     {
         var userId = await CreateUserAsync();
 
-        AddAlbumsResult result;
+        Result<AddAlbumsResult> result;
         await using (var context = _fixture.CreateContext())
         {
-            result = await new LibraryService(context).AddAlbumsAsync(userId, [Discovery, Homework], CancellationToken.None);
+            result = await Service(context).AddAlbumsAsync(userId, [Discovery, Homework], CancellationToken.None);
         }
 
-        await using var verify = _fixture.CreateContext();
-        var library = await new LibraryService(verify).GetLibraryAsync(userId, CancellationToken.None);
+        var page = await GetPageAsync(userId);
 
+        Assert.That(result.IsSuccess, Is.True);
         Assert.Multiple(() =>
         {
-            Assert.That(result.Added, Has.Count.EqualTo(2));
-            Assert.That(result.Skipped, Is.Empty);
-            Assert.That(library.Albums.Select(a => a.ProviderAlbumId), Is.EquivalentTo(new[] { "302127", "302128" }));
+            Assert.That(result.Value.Added, Has.Count.EqualTo(2));
+            Assert.That(result.Value.Skipped, Is.Empty);
+            Assert.That(page.Albums.Select(a => a.ProviderAlbumId), Is.EqualTo(new[] { "302127", "302128" }));
+            Assert.That(page.TotalCount, Is.EqualTo(2));
         });
     }
 
@@ -70,23 +74,23 @@ public class LibraryServiceTests
         var userId = await CreateUserAsync();
         await using (var context = _fixture.CreateContext())
         {
-            await new LibraryService(context).AddAlbumsAsync(userId, [Discovery], CancellationToken.None);
+            await Service(context).AddAlbumsAsync(userId, [Discovery], CancellationToken.None);
         }
 
-        AddAlbumsResult secondAttempt;
+        Result<AddAlbumsResult> secondAttempt;
         await using (var context = _fixture.CreateContext())
         {
-            secondAttempt = await new LibraryService(context).AddAlbumsAsync(userId, [Discovery, Homework], CancellationToken.None);
+            secondAttempt = await Service(context).AddAlbumsAsync(userId, [Discovery, Homework], CancellationToken.None);
         }
 
-        await using var verify = _fixture.CreateContext();
-        var library = await new LibraryService(verify).GetLibraryAsync(userId, CancellationToken.None);
+        var page = await GetPageAsync(userId);
 
+        Assert.That(secondAttempt.IsSuccess, Is.True);
         Assert.Multiple(() =>
         {
-            Assert.That(secondAttempt.Added.Select(a => a.ProviderAlbumId), Is.EqualTo(new[] { "302128" }));
-            Assert.That(secondAttempt.Skipped, Is.EqualTo(new[] { Discovery }));
-            Assert.That(library.Albums, Has.Count.EqualTo(2));
+            Assert.That(secondAttempt.Value.Added.Select(a => a.ProviderAlbumId), Is.EqualTo(new[] { "302128" }));
+            Assert.That(secondAttempt.Value.Skipped, Is.EqualTo(new[] { Discovery }));
+            Assert.That(page.TotalCount, Is.EqualTo(2));
         });
     }
 
@@ -96,12 +100,13 @@ public class LibraryServiceTests
         var userId = await CreateUserAsync();
 
         await using var context = _fixture.CreateContext();
-        var result = await new LibraryService(context).AddAlbumsAsync(userId, [Discovery, Discovery], CancellationToken.None);
+        var result = await Service(context).AddAlbumsAsync(userId, [Discovery, Discovery], CancellationToken.None);
 
+        Assert.That(result.IsSuccess, Is.True);
         Assert.Multiple(() =>
         {
-            Assert.That(result.Added, Has.Count.EqualTo(1));
-            Assert.That(result.Skipped, Has.Count.EqualTo(1));
+            Assert.That(result.Value.Added, Has.Count.EqualTo(1));
+            Assert.That(result.Value.Skipped, Has.Count.EqualTo(1));
         });
     }
 
@@ -116,13 +121,40 @@ public class LibraryServiceTests
         context.SavingChanges += (_, _) =>
         {
             using var other = _fixture.CreateContext();
-            new LibraryService(other).AddAlbumsAsync(userId, [Discovery], CancellationToken.None).GetAwaiter().GetResult();
+            Service(other).AddAlbumsAsync(userId, [Discovery], CancellationToken.None).GetAwaiter().GetResult();
         };
-        var service = new LibraryService(context);
 
-        Assert.That(
-            () => service.AddAlbumsAsync(userId, [Discovery], CancellationToken.None),
-            Throws.TypeOf<ConflictException>());
+        var result = await Service(context).AddAlbumsAsync(userId, [Discovery], CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.Error!.Kind, Is.EqualTo(ErrorKind.Conflict));
+        });
+    }
+
+    [Test]
+    public async Task Library_pages_are_ordered_by_addition_and_report_the_total()
+    {
+        var userId = await CreateUserAsync();
+        await using (var context = _fixture.CreateContext())
+        {
+            var service = Service(context);
+            for (var i = 1; i <= 5; i++)
+            {
+                await service.AddAlbumsAsync(userId, [Discovery with { ProviderAlbumId = i.ToString() }], CancellationToken.None);
+            }
+        }
+
+        var firstPage = await GetPageAsync(userId, new PageRequest(page: 1, pageSize: 2));
+        var lastPage = await GetPageAsync(userId, new PageRequest(page: 3, pageSize: 2));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(firstPage.Albums.Select(a => a.ProviderAlbumId), Is.EqualTo(new[] { "1", "2" }));
+            Assert.That(firstPage.TotalCount, Is.EqualTo(5));
+            Assert.That(lastPage.Albums.Select(a => a.ProviderAlbumId), Is.EqualTo(new[] { "5" }));
+        });
     }
 
     [Test]
@@ -132,22 +164,23 @@ public class LibraryServiceTests
         Guid savedAlbumId;
         await using (var context = _fixture.CreateContext())
         {
-            var result = await new LibraryService(context).AddAlbumsAsync(userId, [Discovery, Homework], CancellationToken.None);
-            savedAlbumId = result.Added[0].Id;
+            var result = await Service(context).AddAlbumsAsync(userId, [Discovery, Homework], CancellationToken.None);
+            savedAlbumId = result.Value.Added[0].Id;
         }
 
+        Result removal;
         await using (var context = _fixture.CreateContext())
         {
-            await new LibraryService(context).RemoveAlbumAsync(userId, savedAlbumId, CancellationToken.None);
+            removal = await Service(context).RemoveAlbumAsync(userId, savedAlbumId, CancellationToken.None);
         }
 
-        await using var verify = _fixture.CreateContext();
-        var library = await new LibraryService(verify).GetLibraryAsync(userId, CancellationToken.None);
+        var page = await GetPageAsync(userId);
 
         Assert.Multiple(() =>
         {
-            Assert.That(library.Albums, Has.Count.EqualTo(1));
-            Assert.That(library.Albums.Single().ProviderAlbumId, Is.EqualTo("302128"));
+            Assert.That(removal.IsSuccess, Is.True);
+            Assert.That(page.TotalCount, Is.EqualTo(1));
+            Assert.That(page.Albums.Single().ProviderAlbumId, Is.EqualTo("302128"));
         });
     }
 
@@ -157,33 +190,49 @@ public class LibraryServiceTests
         var userId = await CreateUserAsync();
 
         await using var context = _fixture.CreateContext();
-        var service = new LibraryService(context);
+        var result = await Service(context).RemoveAlbumAsync(userId, Guid.NewGuid(), CancellationToken.None);
 
-        Assert.That(
-            () => service.RemoveAlbumAsync(userId, Guid.NewGuid(), CancellationToken.None),
-            Throws.TypeOf<NotFoundException>());
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.Error!.Kind, Is.EqualTo(ErrorKind.NotFound));
+        });
     }
 
     [Test]
     public async Task Operations_on_an_unknown_user_report_not_found()
     {
         await using var context = _fixture.CreateContext();
-        var libraryService = new LibraryService(context);
-        var userService = new UserService(context);
+        var libraryService = Service(context);
         var unknownUser = Guid.NewGuid();
+
+        var page = await libraryService.GetLibraryPageAsync(unknownUser, new PageRequest(), CancellationToken.None);
+        var add = await libraryService.AddAlbumsAsync(unknownUser, [Discovery], CancellationToken.None);
+        var user = await new UserService(context).GetAsync(unknownUser, CancellationToken.None);
 
         Assert.Multiple(() =>
         {
-            Assert.That(() => libraryService.GetLibraryAsync(unknownUser, CancellationToken.None), Throws.TypeOf<NotFoundException>());
-            Assert.That(() => libraryService.AddAlbumsAsync(unknownUser, [Discovery], CancellationToken.None), Throws.TypeOf<NotFoundException>());
-            Assert.That(() => userService.GetAsync(unknownUser, CancellationToken.None), Throws.TypeOf<NotFoundException>());
+            Assert.That(page.Error?.Kind, Is.EqualTo(ErrorKind.NotFound));
+            Assert.That(add.Error?.Kind, Is.EqualTo(ErrorKind.NotFound));
+            Assert.That(user.Error?.Kind, Is.EqualTo(ErrorKind.NotFound));
         });
     }
+
+    private static LibraryService Service(MusicLibraryDbContext context) =>
+        new(context, NullLogger<LibraryService>.Instance);
 
     private async Task<Guid> CreateUserAsync()
     {
         await using var context = _fixture.CreateContext();
         var user = await new UserService(context).CreateAsync("Kasia", CancellationToken.None);
         return user.Id;
+    }
+
+    private async Task<LibraryPage> GetPageAsync(Guid userId, PageRequest? page = null)
+    {
+        await using var context = _fixture.CreateContext();
+        var result = await Service(context).GetLibraryPageAsync(userId, page ?? new PageRequest(), CancellationToken.None);
+        Assert.That(result.IsSuccess, Is.True, result.Error?.Message);
+        return result.Value;
     }
 }

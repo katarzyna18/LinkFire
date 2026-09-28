@@ -23,12 +23,13 @@ public sealed class UserService
         return user;
     }
 
-    public async Task<User> GetAsync(Guid userId, CancellationToken cancellationToken)
+    public async Task<Result<User>> GetAsync(Guid userId, CancellationToken cancellationToken)
     {
         var user = await _dbContext.Users
+            .AsNoTracking()
             .Include(u => u.Library)
             .SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
-        return user ?? throw NotFoundException.User(userId);
+        return user is null ? Error.UserNotFound(userId) : user;
     }
 }

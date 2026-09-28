@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Linkfire.MusicLibrary.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(MusicLibraryDbContext))]
-    [Migration("20260928080251_InitialCreate")]
+    [Migration("20260928090608_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -41,7 +41,7 @@ namespace Linkfire.MusicLibrary.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
-                    b.Property<DateTimeOffset>("AddedAt")
+                    b.Property<DateTime>("AddedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("AlbumName")

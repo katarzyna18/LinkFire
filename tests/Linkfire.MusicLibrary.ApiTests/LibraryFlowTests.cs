@@ -32,12 +32,14 @@ public class LibraryFlowTests : ApiTestBase
     {
         Factory.Catalog.Results = [Discovery, Homework];
 
-        var results = await Client.GetFromJsonAsync<JsonElement>("/api/albums/search?album=Discovery&artist=Daft%20Punk", Json);
+        var body = await Client.GetFromJsonAsync<JsonElement>("/api/albums/search?album=Discovery&artist=Daft%20Punk", Json);
+        var results = body.GetProperty("albums");
 
         Assert.Multiple(() =>
         {
             Assert.That(Factory.Catalog.LastQuery!.Album, Is.EqualTo("Discovery"));
             Assert.That(Factory.Catalog.LastQuery.Artist, Is.EqualTo("Daft Punk"));
+            Assert.That(body.GetProperty("unavailableProviders").GetArrayLength(), Is.EqualTo(0));
             Assert.That(results.GetArrayLength(), Is.EqualTo(2));
             Assert.That(results[0].GetProperty("provider").GetString(), Is.EqualTo("fake"));
             Assert.That(results[0].GetProperty("providerAlbumId").GetString(), Is.EqualTo("302127"));
@@ -70,6 +72,8 @@ public class LibraryFlowTests : ApiTestBase
         Assert.Multiple(() =>
         {
             Assert.That(library.GetProperty("userId").GetGuid(), Is.EqualTo(userId));
+            Assert.That(library.GetProperty("totalCount").GetInt32(), Is.EqualTo(2));
+            Assert.That(library.GetProperty("page").GetInt32(), Is.EqualTo(1));
             Assert.That(albums.GetArrayLength(), Is.EqualTo(2));
             Assert.That(albums[0].GetProperty("albumName").GetString(), Is.EqualTo("Discovery"));
             Assert.That(albums[0].GetProperty("artistName").GetString(), Is.EqualTo("Daft Punk"));
@@ -115,5 +119,29 @@ public class LibraryFlowTests : ApiTestBase
         var secondLibrary = await Client.GetFromJsonAsync<JsonElement>($"/api/users/{second}/library", Json);
 
         Assert.That(secondLibrary.GetProperty("albums").GetArrayLength(), Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task Library_is_returned_in_pages()
+    {
+        var userId = await CreateUserAsync();
+        var albums = Enumerable.Range(1, 5)
+            .Select(i => Discovery with { ProviderAlbumId = i.ToString(), AlbumName = $"Album {i}" })
+            .ToArray();
+        await Client.PostAsJsonAsync($"/api/users/{userId}/library/albums", AddAlbumsBody(albums));
+
+        var page1 = await Client.GetFromJsonAsync<JsonElement>($"/api/users/{userId}/library?page=1&pageSize=2", Json);
+        var page3 = await Client.GetFromJsonAsync<JsonElement>($"/api/users/{userId}/library?page=3&pageSize=2", Json);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(page1.GetProperty("totalCount").GetInt32(), Is.EqualTo(5));
+            Assert.That(page1.GetProperty("totalPages").GetInt32(), Is.EqualTo(3));
+            Assert.That(page1.GetProperty("pageSize").GetInt32(), Is.EqualTo(2));
+            Assert.That(page1.GetProperty("albums").EnumerateArray().Select(a => a.GetProperty("albumName").GetString()),
+                Is.EqualTo(new[] { "Album 1", "Album 2" }));
+            Assert.That(page3.GetProperty("albums").EnumerateArray().Select(a => a.GetProperty("albumName").GetString()),
+                Is.EqualTo(new[] { "Album 5" }));
+        });
     }
 }

@@ -22,7 +22,8 @@ public class SavedAlbum
 
     public string AlbumUrl { get; private set; } = string.Empty;
 
-    public DateTimeOffset AddedAt { get; private set; }
+    // UTC. Kept as DateTime rather than DateTimeOffset so every relational provider can sort on it.
+    public DateTime AddedAt { get; private set; }
 
     internal static SavedAlbum Create(Guid libraryId, CatalogAlbum album) => new()
     {
@@ -35,7 +36,7 @@ public class SavedAlbum
         AlbumName = album.AlbumName,
         CoverUrl = album.CoverUrl,
         AlbumUrl = album.AlbumUrl,
-        AddedAt = DateTimeOffset.UtcNow,
+        AddedAt = DateTime.UtcNow,
     };
 
     // Provider names are treated case-insensitively ("Deezer" and "deezer" are the same catalogue),

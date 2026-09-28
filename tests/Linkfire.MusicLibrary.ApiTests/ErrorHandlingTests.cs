@@ -83,6 +83,19 @@ public class ErrorHandlingTests : ApiTestBase
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
+    [TestCase("page=0")]
+    [TestCase("pageSize=0")]
+    [TestCase("pageSize=201")]
+    [TestCase("page=abc")]
+    public async Task Invalid_paging_parameters_return_400(string query)
+    {
+        var userId = await CreateUserAsync();
+
+        var response = await Client.GetAsync($"/api/users/{userId}/library?{query}");
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+    }
+
     [Test]
     public async Task Search_without_album_or_artist_returns_400()
     {
@@ -115,9 +128,10 @@ public class ErrorHandlingTests : ApiTestBase
         var body = problem.GetRawText();
         Assert.Multiple(() =>
         {
+            Assert.That(response.Content.Headers.ContentType!.MediaType, Is.EqualTo("application/problem+json"));
             Assert.That(problem.GetProperty("title").GetString(), Is.EqualTo("Music catalogue unavailable"));
-            Assert.That(body, Does.Not.Contain("Simulated outage"), "provider internals must not leak to clients");
-            Assert.That(body, Does.Not.Contain("Exception"));
+            Assert.That(problem.GetProperty("detail").GetString(), Does.Contain("fake"));
+            Assert.That(body, Does.Not.Contain("Exception"), "provider internals must not leak to clients");
         });
     }
 

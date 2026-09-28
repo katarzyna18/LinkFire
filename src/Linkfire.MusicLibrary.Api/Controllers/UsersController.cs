@@ -6,7 +6,6 @@ namespace Linkfire.MusicLibrary.Api.Controllers;
 
 [ApiController]
 [Route("api/users")]
-[Produces("application/json")]
 public sealed class UsersController : ControllerBase
 {
     private readonly UserService _userService;
@@ -32,8 +31,8 @@ public sealed class UsersController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<UserResponse>> GetById(Guid userId, CancellationToken cancellationToken)
     {
-        var user = await _userService.GetAsync(userId, cancellationToken);
+        var result = await _userService.GetAsync(userId, cancellationToken);
 
-        return UserResponse.From(user);
+        return result.IsSuccess ? UserResponse.From(result.Value) : this.ToProblem(result.Error);
     }
 }

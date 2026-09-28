@@ -53,7 +53,7 @@ namespace Linkfire.MusicLibrary.Infrastructure.Persistence.Migrations
                     AlbumName = table.Column<string>(type: "TEXT", maxLength: 500, nullable: false),
                     CoverUrl = table.Column<string>(type: "TEXT", maxLength: 2000, nullable: true),
                     AlbumUrl = table.Column<string>(type: "TEXT", maxLength: 2000, nullable: false),
-                    AddedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false)
+                    AddedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {

@@ -13,15 +13,12 @@ public sealed class FakeMusicCatalogProvider : IMusicCatalogProvider
 
     public AlbumSearchQuery? LastQuery { get; private set; }
 
-    public Task<IReadOnlyList<CatalogAlbum>> SearchAlbumsAsync(AlbumSearchQuery query, CancellationToken cancellationToken)
+    public Task<CatalogSearchResult> SearchAlbumsAsync(AlbumSearchQuery query, CancellationToken cancellationToken)
     {
         LastQuery = query;
 
-        if (Unavailable)
-        {
-            throw new MusicCatalogUnavailableException(ProviderName, "Simulated outage.");
-        }
-
-        return Task.FromResult(Results);
+        return Task.FromResult(Unavailable
+            ? CatalogSearchResult.Failed(ProviderName)
+            : CatalogSearchResult.Success(ProviderName, Results));
     }
 }
