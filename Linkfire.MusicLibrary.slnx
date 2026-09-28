@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Linkfire.MusicLibrary.Api/Linkfire.MusicLibrary.Api.csproj" />
+    <Project Path="src/Linkfire.MusicLibrary.Application/Linkfire.MusicLibrary.Application.csproj" />
+    <Project Path="src/Linkfire.MusicLibrary.Domain/Linkfire.MusicLibrary.Domain.csproj" />
+    <Project Path="src/Linkfire.MusicLibrary.Infrastructure/Linkfire.MusicLibrary.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Linkfire.MusicLibrary.ApiTests/Linkfire.MusicLibrary.ApiTests.csproj" />
+    <Project Path="tests/Linkfire.MusicLibrary.UnitTests/Linkfire.MusicLibrary.UnitTests.csproj" />
+  </Folder>
+</Solution>
