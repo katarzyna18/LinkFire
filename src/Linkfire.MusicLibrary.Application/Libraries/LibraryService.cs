@@ -51,10 +51,24 @@ public sealed class LibraryService
 
         if (added.Count > 0)
         {
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await SaveAsync(cancellationToken);
         }
 
         return new AddAlbumsResult(added, skipped);
+    }
+
+    // The in-memory duplicate check above cannot see a concurrent request adding the same album;
+    // the unique index catches that and we report it as a retryable conflict instead of a 500.
+    private async Task SaveAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            throw new ConflictException("The library was modified by another request. Please retry.", ex);
+        }
     }
 
     public async Task RemoveAlbumAsync(Guid userId, Guid savedAlbumId, CancellationToken cancellationToken)
@@ -66,6 +80,6 @@ public sealed class LibraryService
             throw NotFoundException.SavedAlbum(savedAlbumId);
         }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        await SaveAsync(cancellationToken);
     }
 }

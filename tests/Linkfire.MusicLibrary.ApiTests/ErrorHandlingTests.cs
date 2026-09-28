@@ -110,6 +110,15 @@ public class ErrorHandlingTests : ApiTestBase
     }
 
     [Test]
+    public async Task Unknown_route_returns_404_problem_details()
+    {
+        var response = await Client.GetAsync("/api/nothing-here");
+
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.NotFound));
+        Assert.That(response.Content.Headers.ContentType!.MediaType, Is.EqualTo("application/problem+json"));
+    }
+
+    [Test]
     public async Task Non_guid_user_id_returns_404()
     {
         var response = await Client.GetAsync("/api/users/not-a-guid/library");

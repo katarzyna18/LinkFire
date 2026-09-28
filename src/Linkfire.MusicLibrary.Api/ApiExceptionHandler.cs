@@ -34,6 +34,12 @@ public sealed class ApiExceptionHandler : IExceptionHandler
                 Title = "Resource not found",
                 Detail = notFound.Message,
             },
+            ConflictException conflict => new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Conflicting update",
+                Detail = conflict.Message,
+            },
             MusicCatalogUnavailableException unavailable => new ProblemDetails
             {
                 Status = StatusCodes.Status503ServiceUnavailable,
@@ -48,10 +54,8 @@ public sealed class ApiExceptionHandler : IExceptionHandler
             return false;
         }
 
-        if (exception is MusicCatalogUnavailableException)
-        {
-            _logger.LogError(exception, "External music catalogue request failed");
-        }
+        // Provider failures are already logged with detail by the adapter; here we only record the outcome.
+        _logger.LogInformation("Request failed with {StatusCode}: {ExceptionType}", problem.Status, exception.GetType().Name);
 
         httpContext.Response.StatusCode = problem.Status!.Value;
 

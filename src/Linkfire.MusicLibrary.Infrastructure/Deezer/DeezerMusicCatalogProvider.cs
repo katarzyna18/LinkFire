@@ -82,8 +82,7 @@ public sealed class DeezerMusicCatalogProvider : IMusicCatalogProvider
 
         return (payload.Data ?? [])
             .Select(MapAlbum)
-            .Where(album => album is not null)
-            .Select(album => album!)
+            .OfType<CatalogAlbum>()
             .ToList();
     }
 

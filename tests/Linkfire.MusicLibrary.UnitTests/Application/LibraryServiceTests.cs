@@ -106,6 +106,26 @@ public class LibraryServiceTests
     }
 
     [Test]
+    public async Task Concurrent_add_of_the_same_album_is_reported_as_a_conflict()
+    {
+        var userId = await CreateUserAsync();
+
+        await using var context = _fixture.CreateContext();
+        // Simulate another request winning the race: it inserts the same album after this
+        // context has loaded the (still empty) library but before its INSERT runs.
+        context.SavingChanges += (_, _) =>
+        {
+            using var other = _fixture.CreateContext();
+            new LibraryService(other).AddAlbumsAsync(userId, [Discovery], CancellationToken.None).GetAwaiter().GetResult();
+        };
+        var service = new LibraryService(context);
+
+        Assert.That(
+            () => service.AddAlbumsAsync(userId, [Discovery], CancellationToken.None),
+            Throws.TypeOf<ConflictException>());
+    }
+
+    [Test]
     public async Task Removing_an_album_deletes_it_from_the_library()
     {
         var userId = await CreateUserAsync();
