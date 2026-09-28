@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: linkfire-music-library:local
+    container_name: linkfire-music-library
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__MusicLibrary: "Data Source=/app/data/musiclibrary.db"
+      Deezer__BaseUrl: "https://api.deezer.com/"
+      Deezer__TimeoutSeconds: "5"
+    volumes:
+      - musiclibrary-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  # Named volume keeps the SQLite database between `docker compose down` / `up`.
+  # Remove it with `docker compose down -v` to start from an empty library.
+  musiclibrary-data:
